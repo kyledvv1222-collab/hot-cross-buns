@@ -43,6 +43,11 @@
   }
   .brand { display: flex; flex-direction: column; min-width: 0; margin-right: auto; }
   .brand .mark { font-family: var(--font-display); font-size: 22px; letter-spacing: .02em; color: var(--brass); line-height: 1.1; }
+  .brand .ver { font-family: var(--font-num); font-size: 13px; font-weight: 700; vertical-align: middle;
+    color: var(--bg); background: var(--brass); border-radius: 6px; padding: 1px 6px; letter-spacing: .04em; }
+  /* Vertical layout: valve 3 on top, valve 1 at the bottom */
+  .layout-v #nowValves { flex-direction: column-reverse; gap: 6px; }
+  .layout-v .valve.on { transform: translateX(3px); }
   .brand .sub { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .12em; }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; }
   .btn {
@@ -145,7 +150,7 @@
 <body>
 <header class="bar">
   <div class="brand">
-    <span class="mark">Hot Cross Buns</span>
+    <span class="mark">Hot Cross Buns <span class="ver">V2</span></span>
     <span class="sub">Trumpet practice · watch the valves, play the note</span>
   </div>
   <div class="actions">
@@ -162,7 +167,7 @@
     <div class="overlay" id="intro">
       <div class="sheet">
         <h2>Play along with the valve highway</h2>
-        <p>Notes slide down toward the three valve buttons. Each note lights up the valves to press. A purple bar means open, with no valves down.</p>
+        <p>Notes travel toward the three valve buttons, stacked like your trumpet: valve 3 on top (farthest from the mouthpiece), valve 1 at the bottom. Each note lights up the valves to press. A purple bar means open, with no valves down. Prefer the V1 highway? Switch it under Valve layout in Settings.</p>
         <ol>
           <li>Press <b>Start playing</b> and allow the microphone.</li>
           <li>Hold your trumpet ready during the 4-click count-in.</li>
@@ -242,6 +247,13 @@
       <label class="toggle"><input type="checkbox" id="metro">
         <span>Metronome<small>Keep clicking after the count-in.</small></span></label>
       <div class="field">
+        <label for="layout">Valve layout</label>
+        <select id="layout">
+          <option value="v" selected>Vertical: valve 3 on top, notes move left</option>
+          <option value="h">Horizontal: highway, notes move down (V1)</option>
+        </select>
+      </div>
+      <div class="field">
         <label for="key">My instrument</label>
         <select id="key">
           <option value="2" selected>B♭ trumpet (written notes)</option>
@@ -301,7 +313,7 @@
   // ---------- State ----------
   const S = {
     mode: 'idle', preview: false, paused: false,
-    beat: -4, lastFloor: -5, bpm: 80, wait: false, metro: false, transpose: 2,
+    beat: -4, lastFloor: -5, bpm: 80, wait: false, metro: false, transpose: 2, layout: 'v',
     score: 0, streak: 0, best: 0, hits: 0, misses: 0, waiting: false, pops: [],
   };
   let song = buildSong();
@@ -555,6 +567,11 @@
   function draw() {
     ctx.clearRect(0, 0, W, H);
     if (!W || !H) return;
+    const a = S.layout === 'v' ? drawSide() : drawHighway();
+    drawOverlays(a);
+  }
+
+  function drawHighway() {
     const g = geo();
     const beat = S.beat;
 
@@ -694,6 +711,167 @@
       ctx.fillText(`${cur.n}  ·  ${fingLabel(target.valves)}`, g.cx, g.hitY + capR * 0.62 + 14);
     }
 
+    return { px: g.cx, py: g.hitY - capR * 2.2, cx: g.cx };
+  }
+
+  // ---------- Vertical layout: valves stacked 1 (top) to 3 (bottom), notes scroll right to left ----------
+  function line(x1, y1, x2, y2) { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
+  function circle(x, y, r) { ctx.beginPath(); ctx.arc(x, y, Math.max(r, .5), 0, Math.PI * 2); ctx.fill(); }
+  function ballGem(x, y, r, col) {
+    ctx.fillStyle = col.d; circle(x, y + r * .12, r);
+    ctx.fillStyle = col.c; circle(x, y, r * .92);
+    ctx.fillStyle = 'rgba(255,255,255,.55)'; ellipse(x - r * .3, y - r * .35, r * .32, r * .18);
+  }
+  function sgeo() {
+    const top = 96, bottom = 60;
+    const rowH = Math.max(40, Math.min(120, (H - top - bottom) / 3));
+    const rowsTop = top + Math.max(0, (H - top - bottom - rowH * 3) / 2);
+    const hitX = Math.max(110, Math.min(210, W * 0.2));
+    const look = W < 600 ? 4 : 6; // beats visible ahead of the valves
+    const ppb = (W - hitX - 24) / look;
+    return { rowH, rowsTop, rowsBottom: rowsTop + rowH * 3, midY: rowsTop + rowH * 1.5, hitX, ppb };
+  }
+  function drawSide() {
+    const g = sgeo(), beat = S.beat, now = performance.now();
+    const rowY = p => g.rowsTop + g.rowH * (p + 0.5);
+    const vy = i => rowY(2 - i);                      // valve 3 on top (farthest from the mouthpiece), valve 1 at the bottom
+    const bx = pos => g.hitX + (pos - beat) * g.ppb;
+    const r = Math.min(g.rowH * 0.32, g.ppb * 0.22);
+    const capR = Math.min(g.rowH * 0.36, 44);
+
+    // Valve rows
+    for (let p = 0; p < 3; p++) {
+      const y = g.rowsTop + p * g.rowH;
+      ctx.fillStyle = '#1d1936'; ctx.fillRect(0, y, W, g.rowH);
+      ctx.fillStyle = LANE[2 - p].c; ctx.globalAlpha = 0.06; ctx.fillRect(0, y, W, g.rowH);
+      ctx.strokeStyle = LANE[2 - p].c; ctx.globalAlpha = 0.15; ctx.lineWidth = 1; line(0, rowY(p), W, rowY(p));
+      ctx.globalAlpha = 1;
+    }
+    ctx.strokeStyle = '#3a3560'; ctx.lineWidth = 1;
+    for (const p of [1, 2]) line(0, g.rowsTop + p * g.rowH, W, g.rowsTop + p * g.rowH);
+    ctx.strokeStyle = 'rgba(233,185,73,.6)';
+    line(0, g.rowsTop, W, g.rowsTop); line(0, g.rowsBottom, W, g.rowsBottom);
+    // Beat lines
+    for (let b = Math.ceil(beat - g.hitX / g.ppb); b <= beat + (W - g.hitX) / g.ppb; b++) {
+      if (b < -4 || b > SONG_LEN) continue;
+      const measure = b >= 0 && b % 4 === 0;
+      ctx.strokeStyle = measure ? 'rgba(233,185,73,.45)' : 'rgba(166,159,199,.18)';
+      ctx.lineWidth = measure ? 2 : 1;
+      line(bx(b), g.rowsTop, bx(b), g.rowsBottom);
+    }
+
+    // Notes, far (right) to near (left)
+    const pad = r;
+    for (let k = song.length - 1; k >= 0; k--) {
+      const n = song[k];
+      const xh = bx(n.start), xe = bx(n.start + n.b) - 0.08 * g.ppb;
+      if (xe < -pad || xh > W + pad) continue;
+      const v = NOTES[n.n].valves, open = v.length === 0;
+      const missed = n.judged && !n.hit;
+      // sustain tail
+      const x0 = n.hit ? Math.max(xh, g.hitX) : xh;
+      if (xe > x0) {
+        const alpha = missed ? 0.25 : (n.hit ? 0.75 : 0.4);
+        if (open) {
+          ctx.fillStyle = missed ? GREY.c : OPEN.c; ctx.globalAlpha = alpha * 0.45;
+          ctx.fillRect(x0, g.rowsTop + 6, xe - x0, g.rowsBottom - g.rowsTop - 12);
+        } else {
+          const th = Math.max(6, g.rowH * 0.2);
+          ctx.globalAlpha = alpha;
+          for (const vv of v) {
+            const y = vy(vv - 1);
+            ctx.fillStyle = missed ? GREY.c : LANE[vv - 1].c;
+            ctx.fillRect(x0, y - th / 2, xe - x0, th);
+          }
+        }
+        ctx.globalAlpha = 1;
+      }
+      // head
+      if (!n.hit && xh > -pad && xh < W + pad) {
+        const fade = xh > W - 60 ? Math.max(0, (W - xh) / 60) : 1;
+        ctx.globalAlpha = fade;
+        if (open) {
+          const bw = Math.max(14, r * 1.1), h = g.rowsBottom - g.rowsTop - 16;
+          ctx.save();
+          ctx.translate(xh, g.midY);
+          ctx.fillStyle = missed ? GREY.d : OPEN.d; rrect(-bw / 2 + 3, -h / 2 + 3, bw, h, bw / 2); ctx.fill();
+          ctx.fillStyle = missed ? GREY.c : OPEN.c; rrect(-bw / 2, -h / 2, bw, h, bw / 2); ctx.fill();
+          ctx.rotate(-Math.PI / 2);
+          ctx.fillStyle = 'rgba(255,255,255,.92)';
+          ctx.font = `700 ${Math.max(11, Math.min(18, bw * 0.6))}px "Barlow Condensed", Arial, sans-serif`;
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText('OPEN', 0, 1);
+          ctx.restore();
+        } else {
+          for (let i = 0; i < 3; i++) {
+            const y = vy(i), x = xh;
+            if (v.includes(i + 1)) ballGem(x, y, r, missed ? GREY : LANE[i]);
+            else {
+              ctx.strokeStyle = '#a69fc7'; ctx.globalAlpha = 0.35 * fade; ctx.lineWidth = 1.5;
+              ctx.beginPath(); ctx.arc(x, y, r * 0.35, 0, Math.PI * 2); ctx.stroke();
+              ctx.globalAlpha = fade;
+            }
+          }
+        }
+        // note name above the rows, lyric below
+        ctx.globalAlpha = fade * (missed ? 0.4 : 1);
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#f1ecff'; ctx.textBaseline = 'bottom';
+        ctx.font = `400 ${Math.max(14, Math.min(26, r))}px "Bowlby One SC", "Arial Black", sans-serif`;
+        ctx.fillText(n.n, xh, g.rowsTop - 8);
+        ctx.fillStyle = '#a69fc7'; ctx.textBaseline = 'top';
+        ctx.font = `italic 500 ${Math.max(11, Math.min(16, r * 0.7))}px Barlow, Arial, sans-serif`;
+        ctx.fillText(n.l, xh, g.rowsBottom + 8);
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // Hit line + stacked valve caps
+    const cur = currentNote(), target = cur ? NOTES[cur.n] : null;
+    ctx.strokeStyle = 'rgba(241,236,255,.85)'; ctx.lineWidth = 3;
+    line(g.hitX, g.rowsTop - 4, g.hitX, g.rowsBottom + 4);
+    if (target && target.valves.length === 0) {
+      const openFlash = S.pops.some(p => p.kind === 'flash' && !p.valves.length && now - p.t < 250);
+      ctx.save(); ctx.shadowColor = OPEN.c; ctx.shadowBlur = 18;
+      ctx.strokeStyle = OPEN.c; ctx.lineWidth = 5; ctx.globalAlpha = openFlash ? 1 : 0.8;
+      line(g.hitX, g.rowsTop + 4, g.hitX, g.rowsBottom - 4);
+      ctx.restore();
+    }
+    for (let i = 0; i < 3; i++) {
+      const y = vy(i), x = g.hitX;
+      const need = target && target.valves.includes(i + 1);
+      const fl = S.pops.find(p => p.kind === 'flash' && p.valves.includes(i + 1) && now - p.t < 250);
+      ctx.fillStyle = '#9c7420'; circle(x, y + 4, capR + 4);
+      ctx.fillStyle = '#e9b949'; circle(x, y, capR + 4);
+      const dy = need ? 2 : 0;
+      ctx.save();
+      if (need) { ctx.shadowColor = LANE[i].c; ctx.shadowBlur = fl ? 30 : 16; }
+      ctx.fillStyle = need ? LANE[i].c : '#1b1733';
+      circle(x, y + dy, capR);
+      ctx.restore();
+      ctx.fillStyle = need ? '#1b1530' : '#a69fc7';
+      ctx.font = `700 ${Math.max(14, capR * 0.8)}px "Barlow Condensed", Arial, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(i + 1), x, y + dy + 1);
+      if (fl) {
+        const age = (now - fl.t) / 250;
+        ctx.strokeStyle = LANE[i].c; ctx.globalAlpha = 1 - age; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(x, y, capR * (1 + age * 0.8), 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      // which finger presses this valve
+      if (x - capR - 12 > 44) {
+        ctx.fillStyle = need ? LANE[i].c : '#a69fc7';
+        ctx.font = `600 13px Barlow, Arial, sans-serif`;
+        ctx.textAlign = 'right';
+        ctx.fillText(['index', 'middle', 'ring'][i], x - capR - 12, y);
+      }
+    }
+    return { px: Math.min(W * 0.6, g.hitX + capR + 100), py: g.midY, cx: W / 2 };
+  }
+
+  function drawOverlays(a) {
+    const now = performance.now(), beat = S.beat, cur = currentNote();
     // Popups
     S.pops = S.pops.filter(p => now - p.t < 800);
     for (const p of S.pops) {
@@ -702,7 +880,7 @@
       ctx.globalAlpha = 1 - age; ctx.fillStyle = p.color;
       ctx.font = `400 ${Math.max(18, W / 32)}px "Bowlby One SC", "Arial Black", sans-serif`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(p.text, g.cx, g.hitY - capR * 2.2 - age * 40);
+      ctx.fillText(p.text, a.px, a.py - age * 40);
       ctx.globalAlpha = 1;
     }
 
@@ -714,11 +892,11 @@
       ctx.fillStyle = '#e9b949';
       ctx.font = `400 ${Math.min(120, H / 4)}px "Bowlby One SC", "Arial Black", sans-serif`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(String(c), g.cx, H * 0.38);
+      ctx.fillText(String(c), a.cx, H * 0.38);
       ctx.globalAlpha = 1;
       ctx.fillStyle = '#a69fc7';
       ctx.font = `600 16px Barlow, Arial, sans-serif`;
-      ctx.fillText(S.preview ? 'Listen and watch' : 'Get your trumpet ready', g.cx, H * 0.38 + Math.min(80, H / 7));
+      ctx.fillText(S.preview ? 'Listen and watch' : 'Get your trumpet ready', a.cx, H * 0.38 + Math.min(80, H / 7));
     }
 
     // Waiting banner
@@ -727,9 +905,9 @@
       ctx.font = `700 16px Barlow, Arial, sans-serif`;
       const w = ctx.measureText(msg).width + 32;
       ctx.globalAlpha = 0.75 + 0.25 * Math.sin(now / 200);
-      ctx.fillStyle = '#e9b949'; rrect(g.cx - w / 2, 22, w, 34, 17); ctx.fill();
+      ctx.fillStyle = '#e9b949'; rrect(a.cx - w / 2, 22, w, 34, 17); ctx.fill();
       ctx.fillStyle = '#231a05'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(msg, g.cx, 39);
+      ctx.fillText(msg, a.cx, 39);
       ctx.globalAlpha = 1;
     }
     if (S.paused) {
@@ -798,6 +976,19 @@
   $('#wait').onchange = e => { S.wait = e.target.checked; };
   $('#metro').onchange = e => { S.metro = e.target.checked; };
   $('#key').onchange = e => { S.transpose = +e.target.value; };
+  const layoutSel = $('#layout');
+  try {
+    const saved = localStorage.getItem('hcb-layout'); if (saved === 'v' || saved === 'h') S.layout = saved;
+  } catch (e) { /* storage blocked */ }
+  layoutSel.value = S.layout;
+  const applyLayout = () => {
+    document.body.classList.toggle('layout-v', S.layout === 'v');
+  };
+  applyLayout();
+  layoutSel.onchange = e => {
+    S.layout = e.target.value; applyLayout();
+    try { localStorage.setItem('hcb-layout', S.layout); } catch (err) { /* storage blocked */ }
+  };
   document.addEventListener('keydown', e => {
     if (e.target.matches('input, select')) return;
     if (e.code === 'Space') {
