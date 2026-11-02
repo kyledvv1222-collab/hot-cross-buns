@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Hot Cross Buns Practice</title>
+<title>Trumpet Valve Practice</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bowlby+One+SC&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;700&display=swap">
@@ -43,8 +43,6 @@
   }
   .brand { display: flex; flex-direction: column; min-width: 0; margin-right: auto; }
   .brand .mark { font-family: var(--font-display); font-size: 22px; letter-spacing: .02em; color: var(--brass); line-height: 1.1; }
-  .brand .ver { font-family: var(--font-num); font-size: 13px; font-weight: 700; vertical-align: middle;
-    color: var(--bg); background: var(--brass); border-radius: 6px; padding: 1px 6px; letter-spacing: .04em; }
   /* Vertical layout: valve 3 on top, valve 1 at the bottom */
   .layout-v #nowValves { flex-direction: column-reverse; gap: 6px; }
   .layout-v .valve.on { transform: translateX(3px); }
@@ -133,7 +131,7 @@
   .toggle small { display: block; color: var(--muted); font-size: 12px; }
   select { background: #15122a; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
 
-  .chart { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .chart { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 8px; }
   .chart div { text-align: center; background: #15122a; border-radius: 10px; padding: 8px 4px; }
   .chart b { font-family: var(--font-display); font-weight: 400; font-size: 22px; display: block; }
   .chart span { font-size: 12px; color: var(--muted); }
@@ -150,7 +148,7 @@
 <body>
 <header class="bar">
   <div class="brand">
-    <span class="mark">Hot Cross Buns <span class="ver">V2</span></span>
+    <span class="mark" id="songTitle">Hot Cross Buns</span>
     <span class="sub">Trumpet practice · watch the valves, play the note</span>
   </div>
   <div class="actions">
@@ -167,7 +165,7 @@
     <div class="overlay" id="intro">
       <div class="sheet">
         <h2>Play along with the valve highway</h2>
-        <p>Notes travel toward the three valve buttons, stacked like your trumpet: valve 3 on top (farthest from the mouthpiece), valve 1 at the bottom. Each note lights up the valves to press. A purple bar means open, with no valves down. Prefer the V1 highway? Switch it under Valve layout in Settings.</p>
+        <p>Notes travel toward the three valve buttons, stacked like your trumpet: valve 3 on top (farthest from the mouthpiece), valve 1 at the bottom. Each note lights up the valves to press. A purple bar means open, with no valves down. Pick a song, or switch to the horizontal highway, in the panel on the right.</p>
         <ol>
           <li>Press <b>Start playing</b> and allow the microphone.</li>
           <li>Hold your trumpet ready during the 4-click count-in.</li>
@@ -237,6 +235,13 @@
     </div>
 
     <div class="card">
+      <div class="field">
+        <label class="label" for="songSel">Song</label>
+        <select id="songSel"></select>
+      </div>
+    </div>
+
+    <div class="card">
       <span class="label">Settings</span>
       <div class="field">
         <div class="field-row"><label for="tempo">Tempo</label><span class="cents" id="tempoVal">80 BPM</span></div>
@@ -264,11 +269,7 @@
 
     <div class="card">
       <span class="label">Fingerings in this song</span>
-      <div class="chart">
-        <div><b>E</b><span>1 + 2</span></div>
-        <div><b>D</b><span>1 + 3</span></div>
-        <div><b>C</b><span>Open</span></div>
-      </div>
+      <div class="chart" id="chart"></div>
       <span class="kbd">Keyboard: Space starts or pauses, Esc stops.</span>
     </div>
   </aside>
@@ -277,20 +278,42 @@
 <script>
 (() => {
   // ---------- Song data (written pitch for B♭ trumpet) ----------
-  const NOTES = {
-    C: { midi: 60, valves: [] },
-    D: { midi: 62, valves: [1, 3] },
-    E: { midi: 64, valves: [1, 2] },
-  };
-  const SONG_RAW = [
-    ['E', 1, 'Hot'], ['D', 1, 'cross'], ['C', 2, 'buns'],
-    ['E', 1, 'Hot'], ['D', 1, 'cross'], ['C', 2, 'buns'],
-    ['C', .5, 'One'], ['C', .5, 'a'], ['C', .5, 'pen-'], ['C', .5, 'ny'],
-    ['D', .5, 'two'], ['D', .5, 'a'], ['D', .5, 'pen-'], ['D', .5, 'ny'],
-    ['E', 1, 'Hot'], ['D', 1, 'cross'], ['C', 2, 'buns'],
-  ];
-  const SONG_LEN = SONG_RAW.reduce((t, n) => t + n[1], 0);
   const PC_NAMES = ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'B♭', 'B'];
+  // Standard fingering for each written pitch class (low and middle register)
+  const FINGER_BY_PC = [[], [1, 2, 3], [1, 3], [2, 3], [1, 2], [1], [2], [], [2, 3], [1, 2], [1], [2]];
+  const MIDI = { C: 60, D: 62, E: 64 };
+  // A note read from the method book: the mic must hear that note.
+  const note = (name, b, l) => ({ n: name, b, l, midi: MIDI[name], valves: FINGER_BY_PC[MIDI[name] % 12], pcs: [MIDI[name] % 12] });
+  // A note from a fingering chart ("0", "1", "23"): any note played with those valves counts.
+  const fing = (f, b, l) => {
+    const valves = f === '0' ? [] : f.split('').map(Number);
+    const pcs = FINGER_BY_PC.flatMap((v, pc) => v.join() === valves.join() ? [pc] : []);
+    return { n: f, b, l, valves, pcs, midi: { 0: 60, 1: 58, 23: 56 }[f], byFing: true }; // "Listen first" plays low C, B♭, A♭
+  };
+  const rest = b => ({ rest: true, b });
+  const rep = (n, f) => Array.from({ length: n }, f);
+
+  const SONGS = [
+    { id: 'time-for-band', title: 'Time for Band', from: 'Book #1',
+      tip: 'Hold each E for all 4 counts, then rest for 4. Count "1 2 3 4" in your head.',
+      notes: rep(4, () => [note('E', 4, 'hold 4'), rest(4)]).flat() },
+    { id: 'fun-continues', title: 'The Fun Continues', from: 'Book #2',
+      tip: 'Keep valves 1 and 3 down for the whole note, and breathe during the rests.',
+      notes: rep(4, () => [note('D', 4, 'hold 4'), rest(4)]).flat() },
+    { id: 'whole-lotta-counting', title: 'Whole Lotta Counting', from: 'Book #3',
+      tip: 'Switch between E (1 + 2) and D (1 + 3) during the rests: only the second finger moves.',
+      notes: rep(2, () => [note('E', 4, 'hold 4'), rest(4), note('D', 4, 'hold 4'), rest(4)]).flat() },
+    { id: 'hot-cross-buns', title: 'Hot Cross Buns', from: 'Fingering sheet',
+      tip: 'Watch the "One a penny, two a penny" part: four quick 2 + 3, then four quick 1.',
+      notes: [
+        fing('0', 2, 'Hot'), fing('1', 2, 'cross'), fing('23', 4, 'buns'),
+        fing('0', 2, 'Hot'), fing('1', 2, 'cross'), fing('23', 4, 'buns'),
+        fing('23', 1, 'One'), fing('23', 1, 'a'), fing('23', 1, 'pen-'), fing('23', 1, 'ny'),
+        fing('1', 1, 'two'), fing('1', 1, 'a'), fing('1', 1, 'pen-'), fing('1', 1, 'ny'),
+        fing('0', 2, 'Hot'), fing('1', 2, 'cross'), fing('23', 4, 'buns'),
+      ] },
+  ];
+  let SONG = SONGS[3], SONG_LEN = 0, rests = [];
 
   const LANE = [
     { c: '#ff6f61', d: '#9e3229' },
@@ -301,14 +324,20 @@
 
   function buildSong() {
     let t = 0;
-    return SONG_RAW.map(([n, b, l]) => {
-      const o = { n, b, l, start: t, hit: false, judged: false, match: 0, played: false };
-      t += b;
-      return o;
-    });
+    const notes = [];
+    rests = [];
+    for (const it of SONG.notes) {
+      if (it.rest) rests.push({ start: t, b: it.b });
+      else notes.push({ ...it, start: t, hit: false, judged: false, match: 0, played: false });
+      t += it.b;
+    }
+    SONG_LEN = t;
+    return notes;
   }
   const fingLabel = v => v.length ? 'Valves ' + v.join(' + ') : 'Open (no valves)';
   const fingShort = v => v.length ? 'valves ' + v.join(' + ') : 'open';
+  // How to describe a note in prompts: "D · valves 1 + 3", or just "valves 2 + 3" for fingering-chart songs
+  const noteText = n => n.byFing ? fingShort(n.valves) : `${n.n} · ${fingShort(n.valves)}`;
 
   // ---------- State ----------
   const S = {
@@ -427,7 +456,7 @@
     return song.find(n => S.beat < n.start + n.b - 0.001) || null;
   }
   function pop(text, color) { S.pops.push({ text, color, t: performance.now(), kind: 'text' }); }
-  function flash(note) { S.pops.push({ kind: 'flash', valves: NOTES[note.n].valves, t: performance.now() }); }
+  function flash(note) { S.pops.push({ kind: 'flash', valves: note.valves, t: performance.now() }); }
 
   function update(dt) {
     if (S.mode !== 'run') return;
@@ -451,14 +480,13 @@
 
     if (S.preview) {
       for (const n of song) {
-        if (!n.played && S.beat >= n.start) { n.played = true; playTone(NOTES[n.n].midi, n.b * 60 / S.bpm * 0.92); }
+        if (!n.played && S.beat >= n.start) { n.played = true; playTone(n.midi, n.b * 60 / S.bpm * 0.92); }
       }
     } else {
       for (const n of song) {
         if (n.judged) continue;
-        const target = NOTES[n.n];
         const active = S.beat >= n.start - 0.15 && S.beat < n.start + n.b;
-        if (active && heard && heard.pc === target.midi % 12) n.match += dt;
+        if (active && heard && n.pcs.includes(heard.pc)) n.match += dt;
         const durSec = n.b * 60 / S.bpm;
         const need = S.wait ? 0.12 : Math.min(0.18, durSec * 0.35);
         if (!n.hit && n.match >= need) {
@@ -512,7 +540,7 @@
     else if (stars >= 5) tip = 'Try a faster tempo next, or turn off Wait for me.';
     else if (S.wait) tip = 'When this feels easy, turn off Wait for me and play in time.';
     else if (stars <= 2) tip = 'Try Wait for me, or slow the tempo down. Hold each note steady so the mic can catch it.';
-    else tip = 'Watch the "One a penny, two a penny" part: quick C C C C, then D D D D.';
+    else tip = SONG.tip;
     $('#resTip').textContent = tip;
     $('#results').hidden = false;
   }
@@ -603,13 +631,25 @@
       ctx.beginPath(); ctx.moveTo(X(g, p.s, -1.65), p.y); ctx.lineTo(X(g, p.s, 1.65), p.y); ctx.stroke();
     }
 
+    // Rests
+    for (const rs of rests) {
+      const z = rs.start + rs.b / 2 - beat;
+      if (z < 0.2 || z > L) continue;
+      const p = P(g, z);
+      ctx.fillStyle = '#a69fc7'; ctx.globalAlpha = 0.7;
+      ctx.font = `600 ${Math.max(10, 16 * p.s)}px Barlow, Arial, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(`rest · ${rs.b} counts`, g.cx, p.y);
+      ctx.globalAlpha = 1;
+    }
+
     // Notes, far to near
     const cur = currentNote();
     for (let k = song.length - 1; k >= 0; k--) {
       const n = song[k];
       const zh = n.start - beat, ze = n.start + n.b - beat - 0.08;
       if (ze < -1.1 || zh > L) continue;
-      const v = NOTES[n.n].valves, open = v.length === 0;
+      const v = n.valves, open = v.length === 0;
       const missed = n.judged && !n.hit;
       // sustain tail
       const z0 = Math.max(n.hit ? Math.max(zh, 0) : zh, -1.1), z1 = Math.min(ze, L);
@@ -665,7 +705,7 @@
     ctx.fillStyle = fadeGrad; ctx.fillRect(0, 0, W, 90);
 
     // Hit line + valve caps
-    const target = cur ? NOTES[cur.n] : null;
+    const target = cur;
     const showTarget = target && S.mode === 'run' && !S.preview ? true : !!target;
     ctx.strokeStyle = 'rgba(241,236,255,.85)'; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(X(g, 1, -1.65), g.hitY); ctx.lineTo(X(g, 1, 1.65), g.hitY); ctx.stroke();
@@ -708,7 +748,7 @@
       ctx.fillStyle = target.valves.length ? '#f1ecff' : OPEN.c;
       ctx.font = `700 ${Math.max(13, Math.min(18, W / 40))}px Barlow, Arial, sans-serif`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      ctx.fillText(`${cur.n}  ·  ${fingLabel(target.valves)}`, g.cx, g.hitY + capR * 0.62 + 14);
+      ctx.fillText(cur.byFing ? fingLabel(target.valves) : `${cur.n}  ·  ${fingLabel(target.valves)}`, g.cx, g.hitY + capR * 0.62 + 14);
     }
 
     return { px: g.cx, py: g.hitY - capR * 2.2, cx: g.cx };
@@ -760,13 +800,24 @@
       line(bx(b), g.rowsTop, bx(b), g.rowsBottom);
     }
 
+    // Rests: a quiet label in the gap so beginners keep counting
+    for (const rs of rests) {
+      const x = bx(rs.start + rs.b / 2);
+      if (x < g.hitX + capR + 60 || x > W + 40) continue;
+      ctx.fillStyle = '#a69fc7'; ctx.globalAlpha = 0.7;
+      ctx.font = `600 ${Math.max(12, Math.min(16, g.rowH * 0.16))}px Barlow, Arial, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(`rest · ${rs.b} counts`, x, g.midY);
+      ctx.globalAlpha = 1;
+    }
+
     // Notes, far (right) to near (left)
     const pad = r;
     for (let k = song.length - 1; k >= 0; k--) {
       const n = song[k];
       const xh = bx(n.start), xe = bx(n.start + n.b) - 0.08 * g.ppb;
       if (xe < -pad || xh > W + pad) continue;
-      const v = NOTES[n.n].valves, open = v.length === 0;
+      const v = n.valves, open = v.length === 0;
       const missed = n.judged && !n.hit;
       // sustain tail
       const x0 = n.hit ? Math.max(xh, g.hitX) : xh;
@@ -827,7 +878,7 @@
     }
 
     // Hit line + stacked valve caps
-    const cur = currentNote(), target = cur ? NOTES[cur.n] : null;
+    const cur = currentNote(), target = cur;
     ctx.strokeStyle = 'rgba(241,236,255,.85)'; ctx.lineWidth = 3;
     line(g.hitX, g.rowsTop - 4, g.hitX, g.rowsBottom + 4);
     if (target && target.valves.length === 0) {
@@ -901,7 +952,7 @@
 
     // Waiting banner
     if (S.waiting && cur) {
-      const msg = `Play ${cur.n} (${fingShort(NOTES[cur.n].valves)}) to continue`;
+      const msg = cur.byFing ? `Play ${fingShort(cur.valves)} to continue` : `Play ${cur.n} (${fingShort(cur.valves)}) to continue`;
       ctx.font = `700 16px Barlow, Arial, sans-serif`;
       const w = ctx.measureText(msg).width + 32;
       ctx.globalAlpha = 0.75 + 0.25 * Math.sin(now / 200);
@@ -929,13 +980,13 @@
   function panel() {
     const cur = currentNote();
     if (cur) {
-      const t = NOTES[cur.n];
+      const t = cur;
       setText(el.nowNote, cur.n);
       setText(el.nowFing, fingLabel(t.valves));
       setText(el.nowLyric, `"${cur.l.replace('-', '')}"`);
       el.valves.forEach((v, i) => v.classList.toggle('on', t.valves.includes(i + 1)));
       const nx = song[song.indexOf(cur) + 1];
-      setText(el.next, nx ? `Next: ${nx.n} · ${fingShort(NOTES[nx.n].valves)}` : 'Last note!');
+      setText(el.next, nx ? `Next: ${noteText(nx)}` : 'Last note!');
     } else {
       setText(el.next, 'Song complete');
     }
@@ -943,7 +994,7 @@
       setText(el.heard, PC_NAMES[heard.pc]);
       setText(el.cents, (heard.cents > 0 ? '+' : '') + heard.cents + ' cents');
       el.needle.style.left = (50 + heard.cents) + '%';
-      el.heard.classList.toggle('match', !!cur && heard.pc === NOTES[cur.n].midi % 12);
+      el.heard.classList.toggle('match', !!cur && cur.pcs.includes(heard.pc));
     } else {
       setText(el.heard, '–'); setText(el.cents, ''); el.heard.classList.remove('match');
     }
@@ -976,6 +1027,31 @@
   $('#wait').onchange = e => { S.wait = e.target.checked; };
   $('#metro').onchange = e => { S.metro = e.target.checked; };
   $('#key').onchange = e => { S.transpose = +e.target.value; };
+  // Song picker
+  const songSel = $('#songSel');
+  songSel.innerHTML = SONGS.map(sg => `<option value="${sg.id}">${sg.title} (${sg.from})</option>`).join('');
+  function loadSong(id) {
+    SONG = SONGS.find(sg => sg.id === id) || SONGS[3];
+    songSel.value = SONG.id;
+    if (S.mode === 'run') S.mode = 'idle';
+    S.paused = false; S.beat = -4;
+    song = buildSong();
+    $('#songTitle').textContent = SONG.title;
+    $('#results').hidden = true;
+    const seen = new Map();
+    for (const n of song) if (!seen.has(n.n)) seen.set(n.n, n);
+    $('#chart').innerHTML = [...seen.values()].map(n =>
+      `<div><b>${n.n}</b><span>${n.valves.length ? n.valves.join(' + ') : 'Open'}</span></div>`).join('');
+    syncButtons();
+  }
+  let savedSong = null;
+  try { savedSong = localStorage.getItem('hcb-song'); } catch (e) { /* storage blocked */ }
+  loadSong(savedSong || 'hot-cross-buns');
+  songSel.onchange = e => {
+    loadSong(e.target.value);
+    try { localStorage.setItem('hcb-song', SONG.id); } catch (err) { /* storage blocked */ }
+  };
+
   const layoutSel = $('#layout');
   try {
     const saved = localStorage.getItem('hcb-layout'); if (saved === 'v' || saved === 'h') S.layout = saved;
